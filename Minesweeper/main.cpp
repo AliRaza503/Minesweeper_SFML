@@ -64,8 +64,10 @@ revealEmptyTiles(std::vector<std::vector<int>> &board, std::vector<std::vector<T
         if (tileStates[r][c] == TileState::Revealed || board[r][c] == -1) {
             continue;
         }
-        tileStates[r][c] = TileState::Revealed;
-        tilesRevealed++;
+        if (tileStates[r][c] != TileState::Flagged) {
+            tileStates[r][c] = TileState::Revealed;
+            tilesRevealed++;
+        }
         if (board[r][c] == 0) {
             for (int dr = -1; dr <= 1; dr++) {
                 for (int dc = -1; dc <= 1; dc++) {
@@ -418,8 +420,8 @@ int main() {
     sf::Sprite loseFaceSprite(loseFaceTexture);
     sf::Sprite digitsSprite(digitsTexture);
     sf::Sprite debugSprite(debugTexture);
-    sf::Sprite pauseSprite(pauseTexture);
-    sf::Sprite playSprite(playTexture);
+    sf::Sprite pauseSprite(playTexture);
+    sf::Sprite playSprite(pauseTexture);
     sf::Sprite flagSprite(flagTexture);
     sf::Sprite leaderBoardSprite(leaderboardTexture);
     sf::Sprite timerSprite(digitsTexture);
@@ -437,6 +439,10 @@ int main() {
     // For debugging
     bool isDebugging = false;
     auto pauseTime = std::chrono::high_resolution_clock::now();
+    //LeaderBoard Window controls
+    bool closed = false;
+    bool showInNextIter = false;
+    bool showLeaderBoard = false;
     //Main looper
     while (gameWindow.isOpen()) {
         sf::Event event{};
@@ -495,6 +501,20 @@ int main() {
         // Check if the player has won
         if (tilesRevealed == (numRows * numCols) - mineCount) {
             gameState = GameState::Win;
+            for (int i = 0; i < numRows; i++) {
+                for (int j = 0; j < numCols; j++) {
+                    if (gameBoard[i][j] == -1) {
+                        tileState[i][j] = TileState::Flagged;
+                        mineCount--;
+                        sf::Sprite s = hiddenSprite;
+                        s.setPosition((float) j * 32.0f, (float) i * 32.0f);
+                        gameWindow.draw(s);
+                        s = flagSprite;
+                        s.setPosition((float) j * 32.0f, (float) i * 32.0f);
+                        gameWindow.draw(s);
+                    }
+                }
+            }
             elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::high_resolution_clock::now() - start_time).count();
             int time_elapsed = (int) elapsed_time;
@@ -552,6 +572,18 @@ int main() {
                 }
             }
         }
+        if (showLeaderBoard) {
+            displayLeaderBoard(width, height, font, name);
+            start_time += std::chrono::high_resolution_clock::now() - pauseTime;
+            gameState = GameState::InProgress;
+            showLeaderBoard = false;
+        }
+        // Check if there's a need to open leaderboard window
+        if (showInNextIter) {
+            //Open the leaderboard window
+            showLeaderBoard = true;
+            showInNextIter = false;
+        }
         // Draw the face button
         sf::Sprite faceSprite = happyFaceSprite;
         if (gameState == GameState::Win) {
@@ -586,36 +618,37 @@ int main() {
                 tilesRevealed = 0;
                 addedNewScore = false;
                 isDebugging = false;
+                closed = false;
                 gameState = GameState::InProgress;
                 mineCount = MINE_COUNT;
                 start_time = std::chrono::high_resolution_clock::now();
             }
-            // Check if the click was on the debug button
-            if (debugSprite.getGlobalBounds().contains((float) event.mouseButton.x, (float) event.mouseButton.y)) {
-                isDebugging = !isDebugging;
-            }
-            // Check if the click was on the pause/play button
-            if (pausePlaySprite.getGlobalBounds().contains((float) event.mouseButton.x,
-                                                           (float) event.mouseButton.y)) {
-                if (gameState == GameState::Paused) {
-                    gameState = GameState::InProgress;
-                    start_time += std::chrono::high_resolution_clock::now() - pauseTime;
-                } else if (gameState == GameState::InProgress) {
-                    gameState = GameState::Paused;
-                    //Note down the time when the game was paused
-                    pauseTime = std::chrono::high_resolution_clock::now();
+            // If the user has not won the game:
+            if (gameState != GameState::Win && gameState != GameState::Lose) {
+                // Check if the click was on the debug button
+                if (debugSprite.getGlobalBounds().contains((float) event.mouseButton.x, (float) event.mouseButton.y)) {
+                    isDebugging = !isDebugging;
                 }
-            }
-            // Check if the click was on the leaderboard button
-            if (leaderBoardSprite.getGlobalBounds().contains((float) event.mouseButton.x,
-                                                             (float) event.mouseButton.y)) {
-                //reveals/hides the leaderboard window
-                gameState = GameState::Paused;
-                pauseTime = std::chrono::high_resolution_clock::now();
-                //**********Leaderboard Window**********
-                displayLeaderBoard(width, height, font, name);
-                start_time += std::chrono::high_resolution_clock::now() - pauseTime;
-                gameState = GameState::InProgress;
+                // Check if the click was on the pause/play button
+                if (pausePlaySprite.getGlobalBounds().contains((float) event.mouseButton.x,
+                                                               (float) event.mouseButton.y)) {
+                    if (gameState == GameState::Paused) {
+                        gameState = GameState::InProgress;
+                        start_time += std::chrono::high_resolution_clock::now() - pauseTime;
+                    } else if (gameState == GameState::InProgress) {
+                        gameState = GameState::Paused;
+                        //Note down the time when the game was paused
+                        pauseTime = std::chrono::high_resolution_clock::now();
+                    }
+                }
+                // Check if the click was on the leaderboard button
+                if (leaderBoardSprite.getGlobalBounds().contains((float) event.mouseButton.x,
+                                                                 (float) event.mouseButton.y)) {
+                    gameState = GameState::Paused;
+                    pauseTime = std::chrono::high_resolution_clock::now();
+                    //Open the leaderboard window
+                    showInNextIter = true;
+                }
             }
         }
 
@@ -642,7 +675,6 @@ int main() {
             tCount = -tCount;
         }
         // Draw each digit of the mine counter
-
         idx = 0;
         while (idx < 3) {
             int digit = counter[idx++] - '0';
@@ -689,15 +721,9 @@ int main() {
         // Display everything that has been drawn
         gameWindow.display();
 
-        if (gameState == GameState::Win) {
+        if (!closed && gameState == GameState::Win) {
             displayLeaderBoard(width, height, font, name);
-            initGame(gameBoard, tileState, numRows, numCols, MINE_COUNT);
-            tilesRevealed = 0;
-            addedNewScore = false;
-            isDebugging = false;
-            gameState = GameState::InProgress;
-            mineCount = MINE_COUNT;
-            start_time = std::chrono::high_resolution_clock::now();
+            closed = true;
         }
     }
     return 0;
